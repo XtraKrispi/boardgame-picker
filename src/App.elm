@@ -7,14 +7,21 @@ select one randomly given a set of parameters
 The main function which executes the application
 -}
 
-import Html exposing (Html, div, text, h1, input, label, button, form)
-import Html.Attributes exposing (class, type_, name, checked, placeholder)
+import Html exposing (Html, div, text, h1, input, label, button, form, img)
+import Html.Attributes exposing (class, type_, name, checked, placeholder, src)
 import Html.Events exposing (onClick, onSubmit, onInput)
+import Json.Decode.Pipeline exposing (decode, required, custom)
+import Json.Decode exposing (Decoder, int, string, float, bool, list)
+import Http
 
 
 type alias Model =
     { selectionType : SelectionType
     , selection : String
+    , searched : Bool
+    , loading : Bool
+    , lastSearchResults : List Game
+    , lastError : String
     }
 
 
@@ -23,11 +30,42 @@ type Msg
     | AddGameSelected
     | ChangeSelection String
     | Search
+    | CollectionLookupFailed Http.Error
+    | CollectionLookupSucceeded (List Game)
 
 
 type SelectionType
     = AddFromCollection
     | AddGame
+
+
+type GameId
+    = GameId Int
+
+
+type alias Game =
+    { id : GameId
+    , name : String
+    , largeImageUrl : String
+    , thumbnailUrl : String
+    , minPlayers : Int
+    , maxPlayers : Int
+    , playingTime : Int
+    , year : Int
+    , avgRating : Float
+    , rank : Int
+    }
+
+
+type alias Username =
+    String
+
+
+type alias UserGame =
+    { username : Username
+    , isOwned : Bool
+    , game : Game
+    }
 
 
 {-| Main execution of the application
@@ -44,7 +82,7 @@ main =
 
 init : ( Model, Cmd Msg )
 init =
-    ( { selectionType = AddFromCollection, selection = "" }, Cmd.none )
+    ( { selectionType = AddFromCollection, selection = "", loading = False, lastSearchResults = [], lastError = "", searched = False }, Cmd.none )
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -60,7 +98,13 @@ update msg m =
             { m | selection = s } ! [ Cmd.none ]
 
         Search ->
-            m ! [ Cmd.none ]
+            { m | loading = True, searched = True } ! [ getUserCollection (m.selection) ]
+
+        CollectionLookupFailed err ->
+            { m | lastError = toString err, loading = False } ! [ Cmd.none ]
+
+        CollectionLookupSucceeded results ->
+            { m | lastSearchResults = results, loading = False } ! [ Cmd.none ]
 
 
 view : Model -> Html Msg
@@ -90,6 +134,7 @@ mainHeader model =
           -- , radioButton "selection" "Add a game" (model.selectionType == AddGame) AddGameSelected
           -- ,
           searchBar model
+        , renderSearchResults model
         ]
 
 
@@ -107,10 +152,79 @@ searchBar model =
         form [ onSubmit Search ]
             [ div [ class "row" ]
                 [ div [ class "col-sm-10" ]
-                    [ input [ type_ "text", class "form-control", placeholder placeholderText, onInput ChangeSelection ] []
+                    [ input [ type_ "text", class "form-control", placeholder placeholderText, onInput ChangeSelection, Html.Attributes.required True ] []
                     ]
                 , div [ class "col-sm-2" ]
-                    [ button [ type_ "button", class "btn btn-primary" ] [ text "Search" ]
+                    [ button [ type_ "submit", class "btn btn-primary" ] [ text "Search" ]
                     ]
                 ]
             ]
+
+
+renderSearchResults : Model -> Html Msg
+renderSearchResults { lastSearchResults, loading, searched } =
+    let
+        body =
+            if loading then
+                [ text "Loading..." ]
+            else if searched && List.length lastSearchResults == 0 then
+                [ text "No results found..." ]
+            else
+                List.map renderGame lastSearchResults
+    in
+        div [] body
+
+
+renderGame : Game -> Html Msg
+renderGame game =
+    div [ class "game" ]
+        [ div []
+            [ img [ src game.thumbnailUrl ] [] ]
+        , div []
+            [ text game.name ]
+        ]
+
+
+collectionLookupUrl : Username -> String
+collectionLookupUrl u =
+    "https://bgg-json.azurewebsites.net/collection/" ++ u
+
+
+gameDecoder : Decoder Game
+gameDecoder =
+    decode Game
+        |> required "gameId" ((Json.Decode.map GameId) int)
+        |> required "name" string
+        |> required "image" string
+        |> required "thumbnail" string
+        |> required "minPlayers" int
+        |> required "maxPlayers" int
+        |> required "playingTime" int
+        |> required "yearPublished" int
+        |> required "averageRating" float
+        |> required "rank" int
+
+
+userGameDecoder : Username -> Decoder UserGame
+userGameDecoder u =
+    decode (UserGame u)
+        |> required "owned" bool
+        |> custom gameDecoder
+
+
+getUserCollection : Username -> Cmd Msg
+getUserCollection u =
+    Http.get (collectionLookupUrl u) (list (userGameDecoder u))
+        |> Http.send
+            (\result ->
+                case result of
+                    Err err ->
+                        CollectionLookupFailed err
+
+                    Ok games ->
+                        CollectionLookupSucceeded
+                            (games
+                                |> List.filter (\ug -> ug.isOwned)
+                                |> List.map (\{ game } -> game)
+                            )
+            )
