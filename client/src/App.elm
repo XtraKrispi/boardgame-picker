@@ -7,8 +7,8 @@ select one randomly given a set of parameters
 The main function which executes the application
 -}
 
-import Html exposing (Html, div, text, h1, input, label, button, form, img)
-import Html.Attributes exposing (class, type_, name, checked, placeholder, src)
+import Html exposing (Html, div, text, h1, input, label, button, form, img, h3)
+import Html.Attributes exposing (class, type_, name, checked, placeholder, src, disabled, style)
 import Html.Events exposing (onClick, onSubmit, onInput)
 import Json.Decode.Pipeline exposing (decode, required, custom)
 import Json.Decode exposing (Decoder, int, string, float, bool, list)
@@ -22,6 +22,8 @@ type alias Model =
     , loading : Bool
     , lastSearchResults : List Game
     , lastError : String
+    , selectedResults : List Game
+    , allAvailableGames : List Game
     }
 
 
@@ -82,7 +84,7 @@ main =
 
 init : ( Model, Cmd Msg )
 init =
-    ( { selectionType = AddFromCollection, selection = "", loading = False, lastSearchResults = [], lastError = "", searched = False }, Cmd.none )
+    ( { selectionType = AddFromCollection, selection = "", loading = False, lastSearchResults = [], lastError = "", searched = False, selectedResults = [], allAvailableGames = [] }, Cmd.none )
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -133,8 +135,7 @@ mainHeader model =
         [ --   radioButton "selection" "Add from a collection" (model.selectionType == AddFromCollection) AddFromCollectionSelected
           -- , radioButton "selection" "Add a game" (model.selectionType == AddGame) AddGameSelected
           -- ,
-          searchBar model
-        , renderSearchResults model
+          div [ class "row" ] [ div [ class "col-sm-6" ] [ h3 [] [ text "Search" ], searchBar model, renderSearchResults model ], div [ class "col-sm-6" ] [ h3 [] [ text "Available Games" ], renderAvailableGames model ] ]
         ]
 
 
@@ -162,27 +163,48 @@ searchBar model =
 
 
 renderSearchResults : Model -> Html Msg
-renderSearchResults { lastSearchResults, loading, searched } =
+renderSearchResults { lastSearchResults, loading, searched, selectedResults } =
     let
         body =
             if loading then
                 [ text "Loading..." ]
             else if searched && List.length lastSearchResults == 0 then
                 [ text "No results found..." ]
+            else if List.length lastSearchResults > 0 then
+                [ div [ class "btn-group" ]
+                    [ button [ class "btn btn-default" ] [ text "Add All Games" ]
+                    , button [ class "btn btn-default", disabled True ] [ text <| "Add " ++ (toString <| List.length selectedResults) ++ " Selected" ]
+                    ]
+                , div [ class "search-results" ] <| List.map renderGame lastSearchResults
+                ]
             else
-                List.map renderGame lastSearchResults
+                []
     in
-        div [] body
+        div [ class "results-area" ] body
 
 
 renderGame : Game -> Html Msg
 renderGame game =
     div [ class "game" ]
-        [ div []
-            [ img [ src game.thumbnailUrl ] [] ]
-        , div []
-            [ text game.name ]
+        [ div [ class "thumb" ]
+            [ img [ src game.thumbnailUrl ] []
+            ]
+        , div [ class "description" ]
+            [ div [] [ text <| game.name ++ " (" ++ (toString game.year) ++ ")" ]
+            , div [] [ text <| (toString game.minPlayers) ++ "-" ++ (toString game.maxPlayers) ++ " players" ]
+            , div [] [ text <| (toString game.playingTime) ++ " minutes" ]
+            , div [] [ text <| "BGG Rank: " ++ (toString game.rank) ]
+            , div [] [ text <| "Avg Rating: " ++ (toString game.avgRating) ]
+            ]
         ]
+
+
+renderAvailableGames : Model -> Html Msg
+renderAvailableGames { allAvailableGames } =
+    if List.length allAvailableGames == 0 then
+        div [] [ text "Please add at least one game..." ]
+    else
+        div [] <| List.map renderGame allAvailableGames
 
 
 collectionLookupUrl : Username -> String

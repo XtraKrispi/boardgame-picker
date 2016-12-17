@@ -1,3 +1,5 @@
-elm-stuff/
-dist/app.js
-node_modules/
+client/elm-stuff/
+client/dist/app.js
+client/node_modules/
+
+boardgame-picker-server/.stack-work/

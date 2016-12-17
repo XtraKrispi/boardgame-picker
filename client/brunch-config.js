@@ -22,7 +22,7 @@ module.exports = {
         mainModules: ["src/App.elm"],
         outputFolder: "dist/"
       },
-      sass: {
+      less: {
         options: {
           includePaths: ['assets']
         }
