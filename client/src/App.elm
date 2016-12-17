@@ -34,6 +34,8 @@ type Msg
     | Search
     | CollectionLookupFailed Http.Error
     | CollectionLookupSucceeded (List Game)
+    | SelectSearchedGame Game
+    | NoOp
 
 
 type SelectionType
@@ -108,6 +110,15 @@ update msg m =
         CollectionLookupSucceeded results ->
             { m | lastSearchResults = results, loading = False } ! [ Cmd.none ]
 
+        SelectSearchedGame game ->
+            if (isSelected m.selectedResults game) then
+                { m | selectedResults = List.filter ((/=) game) m.selectedResults } ! [ Cmd.none ]
+            else
+                { m | selectedResults = m.selectedResults ++ [ game ] } ! [ Cmd.none ]
+
+        NoOp ->
+            m ! [ Cmd.none ]
+
 
 view : Model -> Html Msg
 view model =
@@ -162,6 +173,11 @@ searchBar model =
             ]
 
 
+isSelected : List Game -> Game -> Bool
+isSelected selectedResults g =
+    (not << List.isEmpty) <| List.filter ((==) g) selectedResults
+
+
 renderSearchResults : Model -> Html Msg
 renderSearchResults { lastSearchResults, loading, searched, selectedResults } =
     let
@@ -173,9 +189,9 @@ renderSearchResults { lastSearchResults, loading, searched, selectedResults } =
             else if List.length lastSearchResults > 0 then
                 [ div [ class "btn-group" ]
                     [ button [ class "btn btn-default" ] [ text "Add All Games" ]
-                    , button [ class "btn btn-default", disabled True ] [ text <| "Add " ++ (toString <| List.length selectedResults) ++ " Selected" ]
+                    , button [ class "btn btn-default", disabled (List.isEmpty selectedResults) ] [ text <| "Add " ++ (toString <| List.length selectedResults) ++ " Selected" ]
                     ]
-                , div [ class "search-results" ] <| List.map renderGame lastSearchResults
+                , div [ class "search-results" ] <| List.map (renderGame SelectSearchedGame (isSelected selectedResults)) lastSearchResults
                 ]
             else
                 []
@@ -183,9 +199,18 @@ renderSearchResults { lastSearchResults, loading, searched, selectedResults } =
         div [ class "results-area" ] body
 
 
-renderGame : Game -> Html Msg
-renderGame game =
-    div [ class "game" ]
+renderGame : (Game -> Msg) -> (Game -> Bool) -> Game -> Html Msg
+renderGame action isSelected game =
+    div
+        [ class <|
+            "game"
+                ++ (if isSelected game then
+                        " selected"
+                    else
+                        ""
+                   )
+        , onClick (action game)
+        ]
         [ div [ class "thumb" ]
             [ img [ src game.thumbnailUrl ] []
             ]
@@ -204,7 +229,7 @@ renderAvailableGames { allAvailableGames } =
     if List.length allAvailableGames == 0 then
         div [] [ text "Please add at least one game..." ]
     else
-        div [] <| List.map renderGame allAvailableGames
+        div [] <| List.map (renderGame (\_ -> NoOp) (always False)) allAvailableGames
 
 
 collectionLookupUrl : Username -> String

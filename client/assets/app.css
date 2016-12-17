@@ -18,6 +18,10 @@
   cursor: pointer;
 }
 
+.search-results .game.selected {
+  background-color: lightblue;
+}
+
 .search-results .game .thumb { 
   display: inline-block;
   margin-right: 10px;
