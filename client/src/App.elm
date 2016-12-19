@@ -7,12 +7,13 @@ select one randomly given a set of parameters
 The main function which executes the application
 -}
 
-import Html exposing (Html, div, text, h1, input, label, button, form, img, h3)
+import Html exposing (Html, div, text, h1, input, label, button, form, img, h3, span, i)
 import Html.Attributes exposing (class, type_, name, checked, placeholder, src, disabled, style)
 import Html.Events exposing (onClick, onSubmit, onInput)
 import Json.Decode.Pipeline exposing (decode, required, custom)
 import Json.Decode exposing (Decoder, int, string, float, bool, list)
 import Http
+import Random
 
 
 type alias Model =
@@ -24,6 +25,10 @@ type alias Model =
     , lastError : String
     , selectedResults : List Game
     , allAvailableGames : List Game
+    , numberOfPlayers : NumberOfPlayers
+    , playTime : PlayTime
+    , availableGamesFromCriteria : List Game
+    , chosenGame : Maybe Game
     }
 
 
@@ -35,6 +40,14 @@ type Msg
     | CollectionLookupFailed Http.Error
     | CollectionLookupSucceeded (List Game)
     | SelectSearchedGame Game
+    | AddAllGames
+    | AddSelectedGames
+    | RemoveGame Game
+    | ChooseAGame
+    | GameNotChosen
+    | GameChosen Game
+    | UpdateNumberOfPlayers (Maybe Int)
+    | UpdatePlayTime (Maybe Int)
     | NoOp
 
 
@@ -72,6 +85,16 @@ type alias UserGame =
     }
 
 
+type NumberOfPlayers
+    = NumberOfPlayers Int
+    | NoPlayerRestriction
+
+
+type PlayTime
+    = PlayTime Int
+    | NoPlayTimeRestriction
+
+
 {-| Main execution of the application
 -}
 main : Program Never Model Msg
@@ -86,7 +109,21 @@ main =
 
 init : ( Model, Cmd Msg )
 init =
-    ( { selectionType = AddFromCollection, selection = "", loading = False, lastSearchResults = [], lastError = "", searched = False, selectedResults = [], allAvailableGames = [] }, Cmd.none )
+    ( { selectionType = AddFromCollection
+      , selection = ""
+      , loading = False
+      , lastSearchResults = []
+      , lastError = ""
+      , searched = False
+      , selectedResults = []
+      , allAvailableGames = []
+      , numberOfPlayers = NoPlayerRestriction
+      , playTime = NoPlayTimeRestriction
+      , availableGamesFromCriteria = []
+      , chosenGame = Nothing
+      }
+    , Cmd.none
+    )
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -116,8 +153,78 @@ update msg m =
             else
                 { m | selectedResults = m.selectedResults ++ [ game ] } ! [ Cmd.none ]
 
+        AddAllGames ->
+            { m | allAvailableGames = m.allAvailableGames ++ (except m.lastSearchResults m.allAvailableGames), selectedResults = [] } ! [ Cmd.none ]
+
+        AddSelectedGames ->
+            { m | allAvailableGames = m.allAvailableGames ++ (except m.selectedResults m.allAvailableGames), selectedResults = [] } ! [ Cmd.none ]
+
+        RemoveGame game ->
+            { m | allAvailableGames = List.filter ((/=) game) m.allAvailableGames } ! [ Cmd.none ]
+
+        ChooseAGame ->
+            let
+                filteredGames =
+                    filterApplicableGames m.playTime m.numberOfPlayers m.allAvailableGames
+            in
+                m ! [ getRandomGame filteredGames ]
+
+        GameNotChosen ->
+            { m | lastError = "Couldn't find a game with the parameters" } ! [ Cmd.none ]
+
+        GameChosen game ->
+            { m | chosenGame = Just game } ! [ Cmd.none ]
+
+        UpdateNumberOfPlayers Nothing ->
+            { m | numberOfPlayers = NoPlayerRestriction } ! [ Cmd.none ]
+
+        UpdateNumberOfPlayers (Just t) ->
+            { m | numberOfPlayers = NumberOfPlayers t } ! [ Cmd.none ]
+
+        UpdatePlayTime Nothing ->
+            { m | playTime = NoPlayTimeRestriction } ! [ Cmd.none ]
+
+        UpdatePlayTime (Just t) ->
+            { m | playTime = PlayTime t } ! [ Cmd.none ]
+
         NoOp ->
             m ! [ Cmd.none ]
+
+
+filterApplicableGames : PlayTime -> NumberOfPlayers -> List Game -> List Game
+filterApplicableGames playTime numberOfPlayers =
+    let
+        filterPlayTime { playingTime } =
+            case playTime of
+                NoPlayTimeRestriction ->
+                    True
+
+                PlayTime n ->
+                    playingTime <= n
+
+        filterNumberOfPlayers { minPlayers, maxPlayers } =
+            case numberOfPlayers of
+                NoPlayerRestriction ->
+                    True
+
+                NumberOfPlayers t ->
+                    minPlayers <= t && maxPlayers >= t
+    in
+        List.filter (\game -> filterPlayTime game && filterNumberOfPlayers game)
+
+
+getRandomGame : List Game -> Cmd Msg
+getRandomGame games =
+    let
+        cmdFn gs n =
+            case (List.drop n gs) of
+                [] ->
+                    GameNotChosen
+
+                x :: xs ->
+                    GameChosen x
+    in
+        Random.generate (cmdFn games) (Random.int 0 (List.length games - 1))
 
 
 view : Model -> Html Msg
@@ -146,7 +253,29 @@ mainHeader model =
         [ --   radioButton "selection" "Add from a collection" (model.selectionType == AddFromCollection) AddFromCollectionSelected
           -- , radioButton "selection" "Add a game" (model.selectionType == AddGame) AddGameSelected
           -- ,
-          div [ class "row" ] [ div [ class "col-sm-6" ] [ h3 [] [ text "Search" ], searchBar model, renderSearchResults model ], div [ class "col-sm-6" ] [ h3 [] [ text "Available Games" ], renderAvailableGames model ] ]
+          div [ class "row" ]
+            [ div [ class "col-sm-6" ]
+                [ h3 [] [ text "Search" ]
+                , searchBar model
+                , renderSearchResults model
+                ]
+            , div [ class "col-sm-6" ]
+                [ h3 [] [ text "Available Games" ]
+                , renderAvailableGames model
+                ]
+            ]
+        , div [ class "option-area" ] <|
+            if List.length model.allAvailableGames > 0 then
+                [ renderOptionsArea ]
+            else
+                []
+        , div [] <|
+            case model.chosenGame of
+                Nothing ->
+                    []
+
+                Just game ->
+                    [ renderGame (\_ -> NoOp) (always False) game ]
         ]
 
 
@@ -179,7 +308,7 @@ isSelected selectedResults g =
 
 
 renderSearchResults : Model -> Html Msg
-renderSearchResults { lastSearchResults, loading, searched, selectedResults } =
+renderSearchResults { lastSearchResults, loading, searched, selectedResults, allAvailableGames } =
     let
         body =
             if loading then
@@ -188,10 +317,10 @@ renderSearchResults { lastSearchResults, loading, searched, selectedResults } =
                 [ text "No results found..." ]
             else if List.length lastSearchResults > 0 then
                 [ div [ class "btn-group" ]
-                    [ button [ class "btn btn-default" ] [ text "Add All Games" ]
-                    , button [ class "btn btn-default", disabled (List.isEmpty selectedResults) ] [ text <| "Add " ++ (toString <| List.length selectedResults) ++ " Selected" ]
+                    [ button [ class "btn btn-default", onClick AddAllGames ] [ text "Add All Games" ]
+                    , button [ class "btn btn-default", disabled (List.isEmpty selectedResults), onClick AddSelectedGames ] [ text <| "Add " ++ (toString <| List.length selectedResults) ++ " Selected" ]
                     ]
-                , div [ class "search-results" ] <| List.map (renderGame SelectSearchedGame (isSelected selectedResults)) lastSearchResults
+                , div [ class "search-results" ] <| List.map (renderGame SelectSearchedGame (isSelected selectedResults)) (List.sortBy .name <| except lastSearchResults allAvailableGames)
                 ]
             else
                 []
@@ -226,10 +355,29 @@ renderGame action isSelected game =
 
 renderAvailableGames : Model -> Html Msg
 renderAvailableGames { allAvailableGames } =
-    if List.length allAvailableGames == 0 then
-        div [] [ text "Please add at least one game..." ]
-    else
-        div [] <| List.map (renderGame (\_ -> NoOp) (always False)) allAvailableGames
+    let
+        renderGameWithDelete game =
+            div [] [ span [ class "remove-game", onClick (RemoveGame game) ] [ i [ class "glyphicon glyphicon-remove" ] [] ], (renderGame (\_ -> NoOp) (always False) game) ]
+    in
+        if List.length allAvailableGames == 0 then
+            div [ class "available-games" ] [ text "Please add at least one game..." ]
+        else
+            div [ class "available-games" ] <| List.map renderGameWithDelete (List.sortBy .name allAvailableGames)
+
+
+renderOptionsArea : Html Msg
+renderOptionsArea =
+    form [ onSubmit ChooseAGame ]
+        [ div [ class "form-group" ]
+            [ label [] [ text "How many players?" ]
+            , input [ type_ "number", class "form-control", onInput (UpdateNumberOfPlayers << Result.toMaybe << String.toInt) ] []
+            ]
+        , div [ class "form-group" ]
+            [ label [] [ text "How long do you have to play?" ]
+            , input [ type_ "number", class "form-control", onInput (UpdatePlayTime << Result.toMaybe << String.toInt) ] []
+            ]
+        , button [ type_ "submit", class "btn btn-primary" ] [ text "Find me a game!" ]
+        ]
 
 
 collectionLookupUrl : Username -> String
@@ -275,3 +423,12 @@ getUserCollection u =
                                 |> List.map (\{ game } -> game)
                             )
             )
+
+
+except : List a -> List a -> List a
+except xs ys =
+    let
+        filterFn x =
+            List.all ((/=) x) ys
+    in
+        List.filter filterFn xs

@@ -2,13 +2,13 @@
   margin-top: 20px;
 }
 
-.search-results {
+.search-results, .available-games {
   max-height: 500px;
   overflow: auto;
 }
 
 
-.search-results .game {
+.search-results .game, .available-games .game {
   margin: 20px;
   box-sizing: border-box;
 }
@@ -22,16 +22,26 @@
   background-color: lightblue;
 }
 
-.search-results .game .thumb { 
+.search-results .game .thumb, .available-games .game .thumb { 
   display: inline-block;
   margin-right: 10px;
   }
 
-.search-results .game .thumb .img {  
+.search-results .game .thumb .img, .available-games .game .thumb .img {  
   max-width: 100px;
 }
 
-.search-results .game .description {
+.search-results .game .description, .available-games .game .description {
   display: inline-block;
   vertical-align: top;
+}
+
+.available-games .remove-game {
+  float: right;
+  margin-right: 20px;
+  cursor: pointer;
+}
+
+.option-area {
+  margin-top: 20px;
 }
