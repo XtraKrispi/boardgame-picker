@@ -7,8 +7,8 @@ select one randomly given a set of parameters
 The main function which executes the application
 -}
 
-import Html exposing (Html, div, text, h1, input, label, button, form, img, h3, span, i)
-import Html.Attributes exposing (class, type_, name, checked, placeholder, src, disabled, style)
+import Html exposing (Html, div, text, h1, input, label, button, form, img, h3, span, i, footer, p, a)
+import Html.Attributes exposing (class, type_, name, checked, placeholder, src, disabled, style, href)
 import Html.Events exposing (onClick, onSubmit, onInput)
 import Json.Decode.Pipeline exposing (decode, required, custom)
 import Json.Decode exposing (Decoder, int, string, float, bool, list)
@@ -244,7 +244,10 @@ view model =
 
 layout : Html Msg -> Html Msg
 layout body =
-    div [ class "container" ] [ h1 [] [ text "Board Game Picker" ], body ]
+    div []
+        [ div [ class "container" ] [ h1 [] [ text "Board Game Picker" ], body ]
+        , renderFooter
+        ]
 
 
 radioButton : String -> String -> Bool -> Msg -> Html Msg
@@ -410,6 +413,18 @@ renderOptionsArea =
             , input [ type_ "number", class "form-control", onInput (UpdatePlayTime << Result.toMaybe << String.toInt) ] []
             ]
         , button [ type_ "submit", class "btn btn-primary" ] [ text "Find me a game!" ]
+        ]
+
+
+renderFooter : Html Msg
+renderFooter =
+    footer [ class "footer" ]
+        [ div [ class "container text-center" ]
+            [ p [ class "text-muted" ]
+                [ text "All APIs provided by"
+                , a [ href "https://bgg-json.azurewebsites.net/" ] [ text "BoardGameGeek JSON APIs" ]
+                ]
+            ]
         ]
 
 
