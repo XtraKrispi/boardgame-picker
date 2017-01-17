@@ -22,16 +22,16 @@
   background-color: lightblue;
 }
 
-.search-results .game .thumb, .available-games .game .thumb { 
+.search-results .game .thumb, .available-games .game .thumb, .results-area .game .thumb { 
   display: inline-block;
   margin-right: 10px;
   }
 
-.search-results .game .thumb .img, .available-games .game .thumb .img {  
+.search-results .game .thumb .img, .available-games .game .thumb .img, .results-area .game .thumb .img {  
   max-width: 100px;
 }
 
-.search-results .game .description, .available-games .game .description {
+.search-results .game .description, .available-games .game .description, .results-area .game .description {
   display: inline-block;
   vertical-align: top;
 }

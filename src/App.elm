@@ -28,7 +28,7 @@ type alias Model =
     , numberOfPlayers : NumberOfPlayers
     , playTime : PlayTime
     , availableGamesFromCriteria : List Game
-    , chosenGame : Maybe Game
+    , chosenGame : GameRandomlyChosen
     }
 
 
@@ -48,6 +48,7 @@ type Msg
     | GameChosen Game
     | UpdateNumberOfPlayers (Maybe Int)
     | UpdatePlayTime (Maybe Int)
+    | RemoveAllSelectedGames
     | NoOp
 
 
@@ -95,6 +96,12 @@ type PlayTime
     | NoPlayTimeRestriction
 
 
+type GameRandomlyChosen
+    = NotChosen
+    | CouldntChoose
+    | Chosen Game
+
+
 {-| Main execution of the application
 -}
 main : Program Never Model Msg
@@ -120,7 +127,7 @@ init =
       , numberOfPlayers = NoPlayerRestriction
       , playTime = NoPlayTimeRestriction
       , availableGamesFromCriteria = []
-      , chosenGame = Nothing
+      , chosenGame = NotChosen
       }
     , Cmd.none
     )
@@ -139,13 +146,13 @@ update msg m =
             { m | selection = s } ! [ Cmd.none ]
 
         Search ->
-            { m | loading = True, searched = True } ! [ getUserCollection (m.selection) ]
+            { m | loading = True, searched = True, lastError = "" } ! [ getUserCollection (m.selection) ]
 
         CollectionLookupFailed err ->
             { m | lastError = toString err, loading = False } ! [ Cmd.none ]
 
         CollectionLookupSucceeded results ->
-            { m | lastSearchResults = results, loading = False } ! [ Cmd.none ]
+            { m | lastSearchResults = results, loading = False, lastError = "" } ! [ Cmd.none ]
 
         SelectSearchedGame game ->
             if (isSelected m.selectedResults game) then
@@ -170,10 +177,10 @@ update msg m =
                 m ! [ getRandomGame filteredGames ]
 
         GameNotChosen ->
-            { m | lastError = "Couldn't find a game with the parameters" } ! [ Cmd.none ]
+            { m | chosenGame = CouldntChoose } ! [ Cmd.none ]
 
         GameChosen game ->
-            { m | chosenGame = Just game } ! [ Cmd.none ]
+            { m | chosenGame = Chosen game } ! [ Cmd.none ]
 
         UpdateNumberOfPlayers Nothing ->
             { m | numberOfPlayers = NoPlayerRestriction } ! [ Cmd.none ]
@@ -186,6 +193,9 @@ update msg m =
 
         UpdatePlayTime (Just t) ->
             { m | playTime = PlayTime t } ! [ Cmd.none ]
+
+        RemoveAllSelectedGames ->
+            { m | allAvailableGames = [] } ! [ Cmd.none ]
 
         NoOp ->
             m ! [ Cmd.none ]
@@ -253,7 +263,16 @@ mainHeader model =
         [ --   radioButton "selection" "Add from a collection" (model.selectionType == AddFromCollection) AddFromCollectionSelected
           -- , radioButton "selection" "Add a game" (model.selectionType == AddGame) AddGameSelected
           -- ,
-          div [ class "row" ]
+          div
+            [ if model.lastError /= "" then
+                class "panel panel-danger"
+              else
+                class ""
+            ]
+            [ div [ class "panel-body" ]
+                [ text model.lastError ]
+            ]
+        , div [ class "row" ]
             [ div [ class "col-sm-6" ]
                 [ h3 [] [ text "Search" ]
                 , searchBar model
@@ -269,12 +288,15 @@ mainHeader model =
                 [ renderOptionsArea ]
             else
                 []
-        , div [] <|
+        , div [ class "results-area" ] <|
             case model.chosenGame of
-                Nothing ->
+                NotChosen ->
                     []
 
-                Just game ->
+                CouldntChoose ->
+                    [ text "Couldn't find a game that matches the given criteria!" ]
+
+                Chosen game ->
                     [ renderGame (\_ -> NoOp) (always False) game ]
         ]
 
@@ -317,7 +339,7 @@ renderSearchResults { lastSearchResults, loading, searched, selectedResults, all
                 [ text "No results found..." ]
             else if List.length lastSearchResults > 0 then
                 [ div [ class "btn-group" ]
-                    [ button [ class "btn btn-default", onClick AddAllGames ] [ text "Add All Games" ]
+                    [ button [ class "btn btn-default", onClick AddAllGames ] [ text <| "Add All Games (" ++ (toString <| List.length lastSearchResults) ++ ")" ]
                     , button [ class "btn btn-default", disabled (List.isEmpty selectedResults), onClick AddSelectedGames ] [ text <| "Add " ++ (toString <| List.length selectedResults) ++ " Selected" ]
                     ]
                 , div [ class "search-results" ] <| List.map (renderGame SelectSearchedGame (isSelected selectedResults)) (List.sortBy .name <| except lastSearchResults allAvailableGames)
@@ -345,7 +367,15 @@ renderGame action isSelected game =
             ]
         , div [ class "description" ]
             [ div [] [ text <| game.name ++ " (" ++ (toString game.year) ++ ")" ]
-            , div [] [ text <| (toString game.minPlayers) ++ "-" ++ (toString game.maxPlayers) ++ " players" ]
+            , div []
+                [ text <|
+                    (if game.minPlayers == game.maxPlayers then
+                        (toString game.minPlayers)
+                     else
+                        (toString game.minPlayers) ++ "-" ++ (toString game.maxPlayers)
+                    )
+                        ++ " players"
+                ]
             , div [] [ text <| (toString game.playingTime) ++ " minutes" ]
             , div [] [ text <| "BGG Rank: " ++ (toString game.rank) ]
             , div [] [ text <| "Avg Rating: " ++ (toString game.avgRating) ]
@@ -362,7 +392,10 @@ renderAvailableGames { allAvailableGames } =
         if List.length allAvailableGames == 0 then
             div [ class "available-games" ] [ text "Please add at least one game..." ]
         else
-            div [ class "available-games" ] <| List.map renderGameWithDelete (List.sortBy .name allAvailableGames)
+            div [ class "available-games" ]
+                [ div [] [ button [ class "btn btn-default", onClick RemoveAllSelectedGames ] [ text "Remove all" ] ]
+                , div [] <| List.map renderGameWithDelete (List.sortBy .name allAvailableGames)
+                ]
 
 
 renderOptionsArea : Html Msg
@@ -373,7 +406,7 @@ renderOptionsArea =
             , input [ type_ "number", class "form-control", onInput (UpdateNumberOfPlayers << Result.toMaybe << String.toInt) ] []
             ]
         , div [ class "form-group" ]
-            [ label [] [ text "How long do you have to play?" ]
+            [ label [] [ text "How long (in minutes) do you have to play?" ]
             , input [ type_ "number", class "form-control", onInput (UpdatePlayTime << Result.toMaybe << String.toInt) ] []
             ]
         , button [ type_ "submit", class "btn btn-primary" ] [ text "Find me a game!" ]
