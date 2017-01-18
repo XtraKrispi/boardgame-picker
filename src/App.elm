@@ -29,6 +29,7 @@ type alias Model =
     , playTime : PlayTime
     , availableGamesFromCriteria : List Game
     , chosenGame : GameRandomlyChosen
+    , searchedGame : Maybe String
     }
 
 
@@ -49,6 +50,7 @@ type Msg
     | UpdateNumberOfPlayers (Maybe Int)
     | UpdatePlayTime (Maybe Int)
     | RemoveAllSelectedGames
+    | SearchForGame String
     | NoOp
 
 
@@ -128,6 +130,7 @@ init =
       , playTime = NoPlayTimeRestriction
       , availableGamesFromCriteria = []
       , chosenGame = NotChosen
+      , searchedGame = Nothing
       }
     , Cmd.none
     )
@@ -196,6 +199,16 @@ update msg m =
 
         RemoveAllSelectedGames ->
             { m | allAvailableGames = [] } ! [ Cmd.none ]
+
+        SearchForGame game ->
+            { m
+                | searchedGame =
+                    if game /= "" then
+                        Just game
+                    else
+                        Nothing
+            }
+                ! [ Cmd.none ]
 
         NoOp ->
             m ! [ Cmd.none ]
@@ -333,8 +346,16 @@ isSelected selectedResults g =
 
 
 renderSearchResults : Model -> Html Msg
-renderSearchResults { lastSearchResults, loading, searched, selectedResults, allAvailableGames } =
+renderSearchResults { lastSearchResults, loading, searched, selectedResults, allAvailableGames, searchedGame } =
     let
+        filterFn { name } =
+            case searchedGame of
+                Nothing ->
+                    True
+
+                Just game ->
+                    String.contains (String.toLower game) (String.toLower name)
+
         body =
             if loading then
                 [ text "Loading..." ]
@@ -345,7 +366,10 @@ renderSearchResults { lastSearchResults, loading, searched, selectedResults, all
                     [ button [ class "btn btn-default", onClick AddAllGames ] [ text <| "Add All Games (" ++ (toString <| List.length lastSearchResults) ++ ")" ]
                     , button [ class "btn btn-default", disabled (List.isEmpty selectedResults), onClick AddSelectedGames ] [ text <| "Add " ++ (toString <| List.length selectedResults) ++ " Selected" ]
                     ]
-                , div [ class "search-results" ] <| List.map (renderGame SelectSearchedGame (isSelected selectedResults)) (List.sortBy .name <| except lastSearchResults allAvailableGames)
+                , div [ class "search-game" ]
+                    [ input [ class "form-control", placeholder "Search for game...", onInput SearchForGame, type_ "search" ] []
+                    ]
+                , div [ class "search-results" ] <| List.map (renderGame SelectSearchedGame (isSelected selectedResults)) <| (List.filter filterFn << List.sortBy .name <| except lastSearchResults allAvailableGames)
                 ]
             else
                 []
