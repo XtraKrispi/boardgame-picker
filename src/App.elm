@@ -421,7 +421,7 @@ renderFooter =
     footer [ class "footer" ]
         [ div [ class "container text-center" ]
             [ p [ class "text-muted" ]
-                [ text "All APIs provided by"
+                [ text "All APIs provided by "
                 , a [ href "https://bgg-json.azurewebsites.net/" ] [ text "BoardGameGeek JSON APIs" ]
                 ]
             ]
